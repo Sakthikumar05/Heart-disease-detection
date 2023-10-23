@@ -1,0 +1,80 @@
+zipFilePath = '/MATLAB Drive/AI/dataset.zip';
+
+tempDir = tempname;
+unzip(zipFilePath, tempDir);
+
+fileList = dir(fullfile(tempDir, '*.mat')); 
+
+trainingData = [];
+testData = [];
+trainLabels = [];
+testLabels = [];
+
+for i = 1:length(fileList)
+    currentFileName = fullfile(tempDir, fileList(i).name);
+     
+    load(currentFileName); 
+    
+    splitRatio = 0.8;
+    numSamples = size(ECGData, 1);
+    splitIndex = round(splitRatio * numSamples);
+     
+    trainingData = [trainingData; ECGData(1:splitIndex, :)];
+    trainLabels = [trainLabels; Labels(1:splitIndex)]; 
+    
+    testData = [testData; ECGData(splitIndex+1:end, :)]; 
+    testLabels = [testLabels; Labels(splitIndex+1:end)]; 
+    
+    disp(['Loaded data from file: ', currentFileName]);
+    disp(['Number of training samples: ', num2str(length(trainLabels))]);
+    disp(['Number of testing samples: ', num2str(length(testLabels))]);
+end
+
+numClasses = 5;
+
+numTrainSamples = size(trainingData, 1);
+numTestSamples = size(testData, 1);
+
+inputSize = [1, 5000, 1];
+trainingDataReshaped = reshape(trainingData', inputSize(1), inputSize(2), 1, size(trainingData, 1));
+testDataReshaped = reshape(testData', inputSize(1), inputSize(2), 1, numTestSamples);
+
+disp(size(trainingDataReshaped));
+disp(tempDir);
+disp(dir(tempDir));
+
+disp(size(trainingData));
+
+net = trainNetwork(trainingDataReshaped, categorical(trainLabels), layers, options);
+
+layers = [
+    imageInputLayer([1, 5000, 1])
+    convolution2dLayer(3, 16, 'Padding', 'same') 
+    batchNormalizationLayer() 
+    reluLayer() 
+    maxPooling2dLayer(1, 'Stride', 1) 
+    convolution2dLayer(3, 32, 'Padding', 'same') 
+    batchNormalizationLayer() 
+    reluLayer() 
+    maxPooling2dLayer(1, 'Stride', 1)
+    flattenLayer() 
+    fullyConnectedLayer(128) 
+    reluLayer()
+    fullyConnectedLayer(numClasses) 
+    softmaxLayer() 
+    classificationLayer()
+];
+
+options = trainingOptions('adam', ...
+    'MaxEpochs', 20, ...
+    'MiniBatchSize', 64, ...
+    'Plots', 'training-progress');
+
+net = trainNetwork(trainingData, categorical(trainLabels), layers, options);
+
+predictions = classify(net, testData);
+
+accuracy = sum(predictions == categorical(testLabels)) / numel(testLabels);
+disp(['Accuracy: ', num2str(accuracy * 100), '%']);
+
+rmdir(tempDir, 's');
